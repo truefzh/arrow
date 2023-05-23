@@ -709,6 +709,36 @@ class FileMetaData::FileMetaDataImpl {
     }
   }
 
+  void WriteSchemaTo(::arrow::io::OutputStream* dst,
+                     const std::shared_ptr<Encryptor>& encryptor) const {
+    ThriftSerializer serializer;
+    // Only in encrypted files with plaintext footers the
+    // encryption_algorithm is set in footer
+    if (is_encryption_algorithm_set()) {
+      uint8_t* serialized_data;
+      uint32_t serialized_len;
+      serializer.SerializeToBuffer(&metadata_->schema, &serialized_len, &serialized_data);
+
+      // encrypt the footer key
+      std::vector<uint8_t> encrypted_data(encryptor->CiphertextSizeDelta() +
+                                          serialized_len);
+      unsigned encrypted_len =
+          encryptor->Encrypt(serialized_data, serialized_len, encrypted_data.data());
+
+      // write unencrypted footer
+      PARQUET_THROW_NOT_OK(dst->Write(serialized_data, serialized_len));
+      // Write signature (nonce and tag)
+      PARQUET_THROW_NOT_OK(
+          dst->Write(encrypted_data.data() + 4, encryption::kNonceLength));
+      PARQUET_THROW_NOT_OK(
+          dst->Write(encrypted_data.data() + encrypted_len - encryption::kGcmTagLength,
+                     encryption::kGcmTagLength));
+    } else {  // either plaintext file (when encryptor is null)
+      // or encrypted file with encrypted footer
+      serializer.Serialize(&metadata_->schema, dst, encryptor);
+    }
+  }
+
   std::unique_ptr<RowGroupMetaData> RowGroup(int i) {
     if (!(i >= 0 && i < num_row_groups())) {
       std::stringstream ss;
@@ -974,6 +1004,11 @@ void FileMetaData::WriteTo(::arrow::io::OutputStream* dst,
   return impl_->WriteTo(dst, encryptor);
 }
 
+void FileMetaData::WriteSchemaTo(::arrow::io::OutputStream* dst,
+                                 const std::shared_ptr<Encryptor>& encryptor) const {
+  return impl_->WriteSchemaTo(dst, encryptor);  // fzh to do: impl it.
+}
+
 class FileCryptoMetaData::FileCryptoMetaDataImpl {
  public:
   FileCryptoMetaDataImpl() = default;
@@ -1037,6 +1072,15 @@ std::string FileMetaData::SerializeToString() const {
   WriteTo(serializer.get());
   PARQUET_ASSIGN_OR_THROW(auto metadata_buffer, serializer->Finish());
   return metadata_buffer->ToString();
+}
+
+std::string FileMetaData::SerializeSchemaToString() const {
+  // We need to pass in an initial size. Since it will automatically
+  // increase the buffer size to hold the metadata, we just leave it 0.
+  PARQUET_ASSIGN_OR_THROW(auto serializer, ::arrow::io::BufferOutputStream::Create(0));
+  WriteSchemaTo(serializer.get());  // fzh to do: todo: impl it.
+  PARQUET_ASSIGN_OR_THROW(auto schema_buffer, serializer->Finish());
+  return schema_buffer->ToString();
 }
 
 ApplicationVersion::ApplicationVersion(std::string application, int major, int minor,

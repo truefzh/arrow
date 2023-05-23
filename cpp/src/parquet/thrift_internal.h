@@ -489,6 +489,12 @@ class ThriftSerializer {
   }
 
   template <class T>
+  void SerializeToBuffer(const std::vector<T>* obj, uint32_t* len, uint8_t** buffer) {
+    SerializeStructObjects(obj);
+    mem_buffer_->getBuffer(buffer, len);
+  }
+
+  template <class T>
   void SerializeToString(const T* obj, std::string* result) {
     SerializeObject(obj);
     *result = mem_buffer_->getBufferAsString();
@@ -516,6 +522,27 @@ class ThriftSerializer {
     try {
       mem_buffer_->resetBuffer();
       obj->write(protocol_.get());
+    } catch (std::exception& e) {
+      std::stringstream ss;
+      ss << "Couldn't serialize thrift: " << e.what() << "\n";
+      throw ParquetException(ss.str());
+    }
+  }
+
+  /// @brief Write a vector of struct-type objects
+  /// @tparam T the element type
+  /// @param vec the vector
+  template <class T>
+  void SerializeStructObjects(const std::vector<T>* vec) {
+    try {
+      mem_buffer_->resetBuffer();
+      auto oprot = protocol_.get();
+      oprot->writeListBegin(::apache::thrift::protocol::T_STRUCT,
+                            static_cast<uint32_t>(vec->size()));
+      for (const auto& elem : *vec) {
+        elem.write(oprot);
+      }
+      oprot->writeListEnd();
     } catch (std::exception& e) {
       std::stringstream ss;
       ss << "Couldn't serialize thrift: " << e.what() << "\n";

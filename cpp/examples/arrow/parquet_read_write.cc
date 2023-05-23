@@ -36,6 +36,19 @@ arrow::Status ReadFullFile(std::string path_to_file) {
   std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
   ARROW_RETURN_NOT_OK(parquet::arrow::OpenFile(input, pool, &arrow_reader));
 
+  // fzh: Get the file metadata, and Thrift-serialize it to a string:
+  auto file_metadata_as_thrift_string =
+      arrow_reader->parquet_reader()->metadata()->SerializeToString();
+  std::cout << "File metadata has " << file_metadata_as_thrift_string.size() << " bytes."
+            << std::endl;
+
+  // fzh: We can add a new method: SerializeSchemaToString() to expose the schema in the
+  // file metadata:
+  auto schema_as_thrift_string =
+      arrow_reader->parquet_reader()->metadata()->SerializeSchemaToString();
+  std::cout << "The schema in the file metadata has " << schema_as_thrift_string.size()
+            << " bytes." << std::endl;
+
   // Read entire file as a single Arrow table
   std::shared_ptr<arrow::Table> table;
   ARROW_RETURN_NOT_OK(arrow_reader->ReadTable(&table));
