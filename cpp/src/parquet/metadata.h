@@ -355,12 +355,23 @@ class PARQUET_EXPORT FileMetaData {
   /// is not encrypted (plaintext footer).
   bool VerifySignature(const void* signature);
 
+  /// \brief  Write the file metadata to the output stream, serialized using the Thrift
+  /// compact protocol
   void WriteTo(::arrow::io::OutputStream* dst,
                const std::shared_ptr<Encryptor>& encryptor = NULLPTR) const;
+
+  /// \brief  Write the schema of the file metadata to the output stream, serialized using
+  /// the Thrift compact protocol
+  void WriteSchemaTo(::arrow::io::OutputStream* dst,
+                     const std::shared_ptr<Encryptor>& encryptor = NULLPTR) const;
 
   /// \brief Return Thrift-serialized representation of the metadata as a
   /// string
   std::string SerializeToString() const;
+
+  /// \brief Return Thrift-serialized representation of the schema in the file metadata as
+  /// a string
+  std::string SerializeSchemaToString() const;
 
   // Return const-pointer to make it clear that this object is not to be copied
   const SchemaDescriptor* schema() const;
